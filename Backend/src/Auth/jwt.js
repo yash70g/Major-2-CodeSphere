@@ -12,10 +12,10 @@ function loginRoute(req, res) {
     const requiredFields = ['LoginType', 'Username', 'Password', 'Institution'];
 
     for (const field of requiredFields) {
-        if (req.body[field] === undefined) {
+        if (!req.body[field] || req.body[field].trim() === '') {
             return res.json({
                 success: false,
-                message: `Login failed, ${field} not recieved!`
+                message: `Login failed, ${field} not received or empty!`
             });
         }
     }
@@ -55,10 +55,9 @@ function loginRoute(req, res) {
             const token = jwt.sign(payload, secretKey);
 
             console.log('Generated Token:', token);
-
             res.status(200).cookie(`token`, token, {
                 sameSite: 'none',
-                secure: true,                   // Set to true to ensure the cookie is only sent over HTTPS
+                secure: true,// Set to true to ensure the cookie is only sent over HTTPS
             }).json({
                 success: true,
                 message: "Login Successful",
