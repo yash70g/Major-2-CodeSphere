@@ -23,7 +23,7 @@ function loginRoute(req, res) {
     //LoginType can be = "Students" or "Professors"
 
     //if login type is not Students or Professors
-    if (!["Students", "Professors"].includes(LoginType)) {
+    if(!["Students", "Professors"].includes(LoginType)) {
         res.json({
             success: false,
             message: `Login failed, invalid Login Type ${LoginType}, it should be either Students or Professors`
@@ -56,8 +56,8 @@ function loginRoute(req, res) {
 
             console.log('Generated Token:', token);
             res.status(200).cookie(`token`, token, {
-                sameSite: 'none',
-                secure: true,// Set to true to ensure the cookie is only sent over HTTPS
+                
+                secure: false,// Set to true to ensure the cookie is only sent over HTTPS
             }).json({
                 success: true,
                 message: "Login Successful",
