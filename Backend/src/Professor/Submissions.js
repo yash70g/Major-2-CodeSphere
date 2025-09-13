@@ -202,7 +202,7 @@ async function exportSubmissions(req, res) {
         }
 
         worksheet.getRow(1).font = { bold: true };
-
+        
         res.setHeader(
             "Content-Type",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -226,5 +226,5 @@ module.exports = {
     analyzeSubmission,
     CheckSubmission,
     unsubmitAssignment,
-    exportSubmissions // ✅ new export function
+    exportSubmissions
 };

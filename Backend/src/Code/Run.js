@@ -1,9 +1,8 @@
-// Run.js (auto-wrap snippets before compile)
 const fs = require('fs');
 const path = require('path');
 const { execFile, spawn } = require('child_process');
 
-function  DeleteAfterExecution(...filePaths) {
+function DeleteAfterExecution(...filePaths) {
     filePaths.forEach(filePath => {
         fs.unlink(filePath, (err) => {
             if (err) {
@@ -33,57 +32,14 @@ async function writeCppToFile(code, scriptPath) {
     });
 }
 
-/**
- * Heuristic wrapper for student snippets:
- * - If code contains main(...) => return code unchanged
- * - Else extract #include and using namespace lines to keep them at top
- * - If <iostream> is missing and code references cout/cin/endl, add it
- * - Wrap remaining code in int main() { ... return 0; }
- */
 function prepareCppSource(snippet) {
-    // Quick detection for an existing main function
     if (/\bmain\s*\(/.test(snippet)) {
         return snippet;
     }
-
-//     // Extract include and using lines
-//     let includeLines = (snippet.match(/^\s*#\s*include.*$/mg) || []).map(s => s.trim());
-//     let usingLines = (snippet.match(/^\s*using\s+namespace.*$/mg) || []).map(s => s.trim());
-
-//     // Remove extracted lines from the rest
-//     let rest = snippet
-//         .replace(/^\s*#\s*include.*$/mg, '')
-//         .replace(/^\s*using\s+namespace.*$/mg, '')
-//         .trim();
-
-//     // If the rest references cout/cin/endl and iostream not included, add it
-//     const iostreamIncluded = includeLines.some(l => /<iostream>/.test(l) || /iostream/.test(l));
-//     if (!iostreamIncluded && /\b(cout|cin|endl)\b/.test(rest)) {
-//         includeLines.unshift('#include <iostream>');
-//     }
-
-//     // If rest is empty but user had other top-level statements (e.g. declarations),
-//     // keep it inside main anyway.
-//     // Build wrapped source
-//     const header = (includeLines.length ? includeLines.join('\n') + '\n' : '') +
-//                    (usingLines.length ? usingLines.join('\n') + '\n' : '');
-
-//     const body = rest.length ? rest + '\n' : '';
-
-//     const wrapped = `${header}
-// int main() {
-// ${body}    return 0;
-// }
-// `;
-//     return wrapped;
+    // You can enable the wrapper logic here if you need
+    return snippet;
 }
 
-/**
- * RunCpp(code, input, TimeLimitInSeconds)
- * returns Promise that resolves to:
- *  - { success: true, outputFilePath, verdict: "Run Successful" }
- *  - { success: false, message, verdict: "..." }
- */
 async function RunCpp(code, input = "", TimeLimit = 5) {
     return new Promise(async (resolve, reject) => {
         const scriptName = Date.now().toString();
@@ -92,10 +48,8 @@ async function RunCpp(code, input = "", TimeLimit = 5) {
         const executablePath = path.join(__dirname, exeName);
         const outputFilePath = path.join(__dirname, `${scriptName}.txt`);
 
-        // Maximum output bytes limit (from env or default 5MB)
         const maxFileSize = parseInt(process.env.MemoryLimitForOutputFileInBytes || '', 10) || (5 * 1024 * 1024);
 
-        // Preprocess / wrap snippet into a full program if needed
         const sourceToWrite = prepareCppSource(code);
 
         try {
@@ -109,11 +63,9 @@ async function RunCpp(code, input = "", TimeLimit = 5) {
             return;
         }
 
-        // 1) Compile using g++
         execFile('g++', [scriptPath, '-o', executablePath], { timeout: 20000 }, (compileErr, stdoutCompile, stderrCompile) => {
             if (compileErr) {
                 console.log(`Compilation failed: ${stderrCompile || compileErr.message}`);
-                // Return compilation error with compiler message for debugging
                 DeleteAfterExecution(scriptPath, executablePath);
                 resolve({
                     success: false,
@@ -123,37 +75,31 @@ async function RunCpp(code, input = "", TimeLimit = 5) {
                 return;
             }
 
-            // 2) Spawn executable and stream stdout to output file while enforcing time & size limits
             const writeStream = fs.createWriteStream(outputFilePath, { flags: 'w' });
             let bytesWritten = 0;
-            let killedDueTo = null; // "tle" | "mle" | null
+            let killedDueTo = null;
             let stderrBuffer = "";
 
-            // Use spawn with absolute path to executable
             const child = spawn(executablePath, [], { windowsHide: true });
 
-            // Timeout timer
             const killTimer = setTimeout(() => {
                 killedDueTo = "tle";
-                try { child.kill('SIGKILL'); } catch (e) {}
+                try { child.kill('SIGKILL'); } catch (e) { }
             }, TimeLimit * 1000);
 
-            // handle stdout streaming and enforce maxFileSize
             child.stdout.on('data', chunk => {
                 const chunkBuf = Buffer.from(chunk);
                 const remaining = maxFileSize - bytesWritten;
                 if (remaining <= 0) {
-                    // Already at/over limit — kill
                     killedDueTo = "mle";
-                    try { child.kill('SIGKILL'); } catch (e) {}
+                    try { child.kill('SIGKILL'); } catch (e) { }
                     return;
                 }
                 if (chunkBuf.length > remaining) {
-                    // write only part of chunk to reach limit then kill
                     writeStream.write(chunkBuf.slice(0, remaining), () => {
                         bytesWritten += remaining;
                         killedDueTo = "mle";
-                        try { child.kill('SIGKILL'); } catch (e) {}
+                        try { child.kill('SIGKILL'); } catch (e) { }
                     });
                 } else {
                     writeStream.write(chunkBuf, () => {
@@ -164,13 +110,12 @@ async function RunCpp(code, input = "", TimeLimit = 5) {
             child.stderr.on('data', data => {
                 stderrBuffer += data.toString();
             });
-            // write input (if any) then close stdin
-            if(input) {
+            if (input) {
                 try {
                     child.stdin.write(input);
-                } catch (e) {}
+                } catch (e) { }
             }
-            try { child.stdin.end(); } catch (e) {}
+            try { child.stdin.end(); } catch (e) { }
 
             child.on('error', (err) => {
                 clearTimeout(killTimer);
@@ -185,10 +130,10 @@ async function RunCpp(code, input = "", TimeLimit = 5) {
                     });
                 });
             });
+
             child.on('close', (code, signal) => {
                 clearTimeout(killTimer);
-                writeStream.end(() => {
-                    // If we killed due to MLE or TLE
+                writeStream.end(async () => {
                     if (killedDueTo === "tle") {
                         fs.unlink(outputFilePath, () => {
                             DeleteAfterExecution(scriptPath, executablePath);
@@ -197,6 +142,7 @@ async function RunCpp(code, input = "", TimeLimit = 5) {
                                 message: `script took too long to execute.`,
                                 verdict: "Time Limit Exceeded"
                             });
+                            DeleteAfterExecution(scriptPath, executablePath);
                         });
                         return;
                     }
@@ -211,8 +157,6 @@ async function RunCpp(code, input = "", TimeLimit = 5) {
                         });
                         return;
                     }
-
-                    // If program exited with non-zero code -> runtime error
                     if (code !== 0) {
                         fs.unlink(outputFilePath, () => {
                             DeleteAfterExecution(scriptPath, executablePath);
@@ -225,15 +169,29 @@ async function RunCpp(code, input = "", TimeLimit = 5) {
                         return;
                     }
 
-                    // Successful run
-                    DeleteAfterExecution(scriptPath, executablePath);
-                    resolve({
-                        success: true,
-                        outputFilePath: outputFilePath,
-                        verdict: "Run Successful"
+                    fs.readFile(outputFilePath, 'utf8', (err, Outdata) => {
+                        DeleteAfterExecution(scriptPath, executablePath);
+                        if (err) {
+                            console.log(`Student Code Output: <empty> (failed to read output)`);
+                            resolve({
+                                success: true,
+                                outputFilePath,
+                                output: "",
+                                verdict: "Run Successful (but failed to read output)"
+                            });
+                        } else {
+                            console.log(`Student Code Output: ${Outdata}`);
+                            resolve({
+                                success: true,
+                                outputFilePath,
+                                output: Outdata,
+                                verdict: "Run Successful"
+                            });
+                        }
                     });
                 });
             });
+
         });
     });
 }
